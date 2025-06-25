@@ -20,6 +20,10 @@ export class OpenaiService {
     try {
       const systemPrompt = this.buildSystemPrompt(context);
 
+      console.log('context', context);
+      console.log('messages', messages);
+      
+
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4',
         messages: [{ role: 'system', content: systemPrompt }, ...messages],

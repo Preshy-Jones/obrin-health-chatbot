@@ -157,27 +157,35 @@ export class ConversationService {
     message: string,
     user: any,
   ): Promise<string> {
-    try {
-      const clinics = await this.clinicService.searchNearbyclinics(
-        user.location || 'Nigeria',
-      );
+    // try {
+    //   const clinics = await this.clinicService.searchNearbyclinics(
+    //     user.location || 'Nigeria',
+    //   );
 
-      if (clinics.length === 0) {
-        return `I can help you find healthcare services! Could you share your location or city so I can provide specific clinic recommendations? 🏥`;
-      }
+    //   if (clinics.length === 0) {
+    //     return `I can help you find healthcare services! Could you share your location or city so I can provide specific clinic recommendations? 🏥`;
+    //   }
 
-      const clinicList = clinics
-        .slice(0, 3)
-        .map(
-          (clinic, index) =>
-            `${index + 1}. ${clinic.name}\n📍 ${clinic.address}\n📞 ${clinic.phone || 'Contact available on-site'}`,
-        )
-        .join('\n\n');
+    //   const clinicList = clinics
+    //     .slice(0, 3)
+    //     .map(
+    //       (clinic, index) =>
+    //         `${index + 1}. ${clinic.name}\n📍 ${clinic.address}\n📞 ${clinic.phone || 'Contact available on-site'}`,
+    //     )
+    //     .join('\n\n');
 
-      return `Here are some nearby healthcare facilities:\n\n${clinicList}\n\nWould you like more information about any of these clinics? 🏥`;
-    } catch (error) {
-      return `I can help you find healthcare services! Please share your location, and I'll provide clinic recommendations in your area. 🏥`;
-    }
+    //   return `Here are some nearby healthcare facilities:\n\n${clinicList}\n\nWould you like more information about any of these clinics? 🏥`;
+    // } catch (error) {
+    //   return `I can help you find healthcare services! Please share your location, and I'll provide clinic recommendations in your area. 🏥`;
+    // }
+    const recentMessages = await this.getRecentMessages(user.id, 5);
+    const context = { user, recentMessages };
+
+    const messages: ChatCompletionMessageParam[] = [
+      { role: 'user', content: message },
+    ];
+
+    return await this.openAi.generateResponse(messages, context);
   }
 
   private async handleSymptomCheck(
