@@ -34,6 +34,20 @@ export class ConversationService {
       // Get or create user
       const user = await this.userService.findOrCreateUser(phoneNumber);
 
+      // If user sends location in message (e.g., 'My location is 6.5244, 3.3792' or 'lat:..., lng:...'), parse and store it
+      const locationMatch = message.match(
+        /([+-]?\d+\.\d+)[,\s]+([+-]?\d+\.\d+)/,
+      );
+      if (locationMatch) {
+        const lat = parseFloat(locationMatch[1]);
+        const lng = parseFloat(locationMatch[2]);
+        await this.userService.updateUserLocation(user.id, lat, lng);
+        await this.whatsapp.sendMessage(
+          phoneNumber,
+          'Thanks! I have saved your location. Now I can find clinics near you.',
+        );
+      }
+
       // Get or create conversation
       const conversation = await this.getOrCreateConversation(user.id);
 
@@ -157,35 +171,30 @@ export class ConversationService {
     message: string,
     user: any,
   ): Promise<string> {
-    // try {
-    //   const clinics = await this.clinicService.searchNearbyclinics(
-    //     user.location || 'Nigeria',
-    //   );
-
-    //   if (clinics.length === 0) {
-    //     return `I can help you find healthcare services! Could you share your location or city so I can provide specific clinic recommendations? 🏥`;
-    //   }
-
-    //   const clinicList = clinics
-    //     .slice(0, 3)
-    //     .map(
-    //       (clinic, index) =>
-    //         `${index + 1}. ${clinic.name}\n📍 ${clinic.address}\n📞 ${clinic.phone || 'Contact available on-site'}`,
-    //     )
-    //     .join('\n\n');
-
-    //   return `Here are some nearby healthcare facilities:\n\n${clinicList}\n\nWould you like more information about any of these clinics? 🏥`;
-    // } catch (error) {
-    //   return `I can help you find healthcare services! Please share your location, and I'll provide clinic recommendations in your area. 🏥`;
-    // }
-    const recentMessages = await this.getRecentMessages(user.id, 5);
-    const context = { user, recentMessages };
-
-    const messages: ChatCompletionMessageParam[] = [
-      { role: 'user', content: message },
-    ];
-
-    return await this.openAi.generateResponse(messages, context);
+    // Try to get user's lat/lng
+    const userLocation = await this.userService.getUserLocation(user.id);
+    if (userLocation && userLocation.lat && userLocation.lng) {
+      // Use Google Maps for real search
+      const clinics = await this.clinicService.searchNearbyClinicsGoogleMaps(
+        userLocation.lat,
+        userLocation.lng,
+        5000,
+      );
+      if (clinics.length === 0) {
+        return `I couldn't find any clinics near your location. Please try again later or provide a different location.`;
+      }
+      const clinicList = clinics
+        .slice(0, 3)
+        .map(
+          (clinic, index) =>
+            `${index + 1}. ${clinic.name}\n📍 ${clinic.address}\n⭐ ${clinic.rating || 'N/A'}`,
+        )
+        .join('\n\n');
+      return `Here are some nearby healthcare facilities:\n\n${clinicList}\n\nWould you like more information about any of these clinics? 🏥`;
+    } else {
+      // Ask user for location
+      return `To find clinics near you, please share your location (e.g., send your city or type 'My location is 6.5244, 3.3792').`;
+    }
   }
 
   private async handleSymptomCheck(

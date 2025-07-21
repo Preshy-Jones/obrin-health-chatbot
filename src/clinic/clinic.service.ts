@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
+import axios from 'axios';
 
 interface Clinic {
   name: string;
@@ -14,6 +15,43 @@ interface Clinic {
 export class ClinicService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Search for nearby clinics using Google Maps Places API.
+   * @param lat Latitude
+   * @param lng Longitude
+   * @param radius Search radius in meters (default 5000)
+   * @param keyword Optional keyword (e.g., 'Pap smear', 'STI', etc.)
+   */
+  async searchNearbyClinicsGoogleMaps(
+    lat: number,
+    lng: number,
+    radius = 5000,
+    keyword?: string,
+  ): Promise<Clinic[]> {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      throw new Error('Google Maps API key not set');
+    }
+    const type = 'hospital'; // or 'clinic', but 'hospital' is more widely supported
+    let url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}`;
+    if (keyword) {
+      url += `&keyword=${encodeURIComponent(keyword)}`;
+    }
+    const response = await axios.get(url);
+    const results = response.data.results || [];
+    return results.map((place: any) => ({
+      name: place.name,
+      address: place.vicinity,
+      phone: undefined, // Google Places Nearby Search does not return phone, only Place Details does
+      services: [],
+      rating: place.rating,
+      distance: undefined, // Can be calculated on frontend if needed
+    }));
+  }
+
+  /**
+   * Fallback: Search for clinics by city/location name (mock data)
+   */
   async searchNearbyclinics(
     location: string,
     serviceType?: string,
@@ -22,10 +60,8 @@ export class ClinicService {
       // In a real implementation, you would integrate with Google Places API, Bing Maps, or similar
       // For now, we'll return mock data based on common Nigerian locations
       const mockClinics = this.getMockClinics(location);
-
       // Save search history
       // await this.saveSearchHistory(userId, location, serviceType, mockClinics);
-
       return mockClinics;
     } catch (error) {
       console.error('Error searching for clinics:', error);

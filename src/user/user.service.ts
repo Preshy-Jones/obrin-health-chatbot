@@ -15,6 +15,10 @@ export class UserService {
         data: {
           phoneNumber,
           language: 'en', // Default to English
+          // Add location fields if not present in schema
+          // locationLat: null,
+          // locationLng: null,
+          // city: null,
         },
       });
     }
@@ -27,5 +31,31 @@ export class UserService {
       where: { id: userId },
       data,
     });
+  }
+
+  async updateUserLocation(
+    userId: string,
+    lat: number,
+    lng: number,
+    city?: string,
+  ) {
+    return await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        locationLat: lat,
+        locationLng: lng,
+        city: city || undefined,
+      },
+    });
+  }
+
+  async getUserLocation(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return null;
+    return {
+      lat: user.locationLat,
+      lng: user.locationLng,
+      city: user.city,
+    };
   }
 }
