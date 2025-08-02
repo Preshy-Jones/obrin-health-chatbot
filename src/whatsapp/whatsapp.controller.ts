@@ -27,6 +27,12 @@ export class WhatsappController {
       const message = body.Body;
       const hasMedia = parseInt(body.NumMedia) > 0;
 
+      console.log('phoneNumber', phoneNumber);
+      console.log('message', message);
+      console.log('hasMedia', hasMedia);
+      console.log('mediaUrl', body.MediaUrl0);
+      console.log('mediaType', body.MediaContentType0);
+
       // Process the incoming message
       await this.conversationService.processIncomingMessage({
         phoneNumber,

@@ -50,6 +50,83 @@ export class ClinicService {
   }
 
   /**
+   * Search for specific SRH services
+   * @param lat Latitude
+   * @param lng Longitude
+   * @param serviceType Type of service (e.g., 'pap_smear', 'sti_testing', 'contraception')
+   */
+  async searchSRHServices(
+    lat: number,
+    lng: number,
+    serviceType: string,
+  ): Promise<Clinic[]> {
+    const keywords = this.getServiceKeywords(serviceType);
+    const clinics: Clinic[] = [];
+
+    for (const keyword of keywords) {
+      try {
+        const results = await this.searchNearbyClinicsGoogleMaps(
+          lat,
+          lng,
+          10000,
+          keyword,
+        );
+        clinics.push(...results);
+      } catch (error) {
+        console.error(`Error searching for ${keyword}:`, error);
+      }
+    }
+
+    // Remove duplicates and return top results
+    const uniqueClinics = this.removeDuplicateClinics(clinics);
+    return uniqueClinics.slice(0, 5);
+  }
+
+  private getServiceKeywords(serviceType: string): string[] {
+    const serviceKeywords: { [key: string]: string[] } = {
+      pap_smear: [
+        'pap smear',
+        'cervical screening',
+        'gynecology',
+        'women health',
+      ],
+      sti_testing: [
+        'STI testing',
+        'STD testing',
+        'sexual health',
+        'infectious disease',
+      ],
+      contraception: [
+        'family planning',
+        'contraception',
+        'birth control',
+        'reproductive health',
+      ],
+      emergency_contraception: [
+        'emergency contraception',
+        'plan B',
+        'morning after pill',
+      ],
+      pregnancy_test: ['pregnancy test', 'prenatal care', 'maternity'],
+      menopause: ['menopause', 'gynecology', 'women health', 'hormone therapy'],
+    };
+
+    return serviceKeywords[serviceType] || ['healthcare', 'medical'];
+  }
+
+  private removeDuplicateClinics(clinics: Clinic[]): Clinic[] {
+    const seen = new Set();
+    return clinics.filter((clinic) => {
+      const key = clinic.name.toLowerCase();
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  /**
    * Fallback: Search for clinics by city/location name (mock data)
    */
   async searchNearbyclinics(

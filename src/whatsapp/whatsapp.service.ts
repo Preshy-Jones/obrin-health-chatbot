@@ -30,7 +30,7 @@ export class WhatsappService {
 
     try {
       await this.client.messages.create({
-        from: 'whatsapp:+14155238886',
+        from: `whatsapp:${this.twilioNumber}`,
         to: `whatsapp:${to}`,
         body,
       });

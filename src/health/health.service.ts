@@ -41,4 +41,81 @@ export class HealthService {
       });
     }
   }
+
+  async updateLastPeriod(userId: string, date: Date) {
+    const profile = await this.getHealthProfile(userId);
+    if (profile) {
+      return await this.prisma.healthProfile.update({
+        where: { id: profile.id },
+        data: {
+          lastPeriod: date,
+          updatedAt: new Date(),
+        },
+      });
+    } else {
+      return await this.prisma.healthProfile.create({
+        data: {
+          userId,
+          lastPeriod: date,
+        },
+      });
+    }
+  }
+
+  async predictNextPeriod(userId: string): Promise<Date | null> {
+    const profile = await this.getHealthProfile(userId);
+    if (!profile?.lastPeriod || !profile?.cycleLength) {
+      return null;
+    }
+
+    const nextPeriod = new Date(profile.lastPeriod);
+    nextPeriod.setDate(nextPeriod.getDate() + profile.cycleLength);
+    return nextPeriod;
+  }
+
+  async updateCycleLength(userId: string, cycleLength: number) {
+    const profile = await this.getHealthProfile(userId);
+    if (profile) {
+      return await this.prisma.healthProfile.update({
+        where: { id: profile.id },
+        data: {
+          cycleLength,
+          updatedAt: new Date(),
+        },
+      });
+    } else {
+      return await this.prisma.healthProfile.create({
+        data: {
+          userId,
+          cycleLength,
+        },
+      });
+    }
+  }
+
+  async addMedication(userId: string, medication: string) {
+    const profile = await this.getHealthProfile(userId);
+    if (profile) {
+      return await this.prisma.healthProfile.update({
+        where: { id: profile.id },
+        data: {
+          medications: [...new Set([...profile.medications, medication])],
+          updatedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  async addAllergy(userId: string, allergy: string) {
+    const profile = await this.getHealthProfile(userId);
+    if (profile) {
+      return await this.prisma.healthProfile.update({
+        where: { id: profile.id },
+        data: {
+          allergies: [...new Set([...profile.allergies, allergy])],
+          updatedAt: new Date(),
+        },
+      });
+    }
+  }
 }
