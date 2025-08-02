@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, forwardRef, Inject } from '@nestjs/common';
 import { HealthService } from './health.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 
@@ -6,6 +6,7 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 export class MenstrualTrackingService {
   constructor(
     private healthService: HealthService,
+    @Inject(forwardRef(() => WhatsappService))
     private whatsappService: WhatsappService,
   ) {}
 
