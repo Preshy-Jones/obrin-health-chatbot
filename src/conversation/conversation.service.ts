@@ -160,7 +160,9 @@ export class ConversationService {
       );
 
       // Get or create conversation for message history
-      console.log('💬 [ConversationService] Getting/creating conversation for message history...');
+      console.log(
+        '💬 [ConversationService] Getting/creating conversation for message history...',
+      );
       const conversation = await this.getOrCreateConversation(user.id);
 
       // Save user message
@@ -169,7 +171,9 @@ export class ConversationService {
 
       // If conversational response is available, use it
       if (conversationalResponse.response) {
-        console.log('✅ [ConversationService] Using conversational response...');
+        console.log(
+          '✅ [ConversationService] Using conversational response...',
+        );
         // Save assistant response
         await this.saveMessage(
           conversation.id,
@@ -178,7 +182,10 @@ export class ConversationService {
         );
 
         // Send conversational response
-        console.log('📤 [ConversationService] Sending conversational response:', conversationalResponse.response.substring(0, 100) + '...');
+        console.log(
+          '📤 [ConversationService] Sending conversational response:',
+          conversationalResponse.response.substring(0, 100) + '...',
+        );
         await this.whatsapp.sendMessage(
           phoneNumber,
           conversationalResponse.response,
@@ -196,7 +203,9 @@ export class ConversationService {
             console.log('📤 [ConversationService] Sending clinic results...');
             await this.saveMessage(conversation.id, clinicResults, 'ASSISTANT');
             await this.whatsapp.sendMessage(phoneNumber, clinicResults);
-            console.log('✅ [ConversationService] Clinic results sent, ending process');
+            console.log(
+              '✅ [ConversationService] Clinic results sent, ending process',
+            );
             return;
           }
         }
@@ -204,14 +213,16 @@ export class ConversationService {
         console.log('✅ [ConversationService] Conversational flow completed');
         return;
       }
-      
-      console.log('⚠️ [ConversationService] No conversational response, falling back to intent-based processing...');
+
+      console.log(
+        '⚠️ [ConversationService] No conversational response, falling back to intent-based processing...',
+      );
 
       // Fallback to original intent-based processing
       console.log('🎯 [ConversationService] Detecting intent...');
       const intent = await this.detectIntent(message, user);
       console.log('✅ [ConversationService] Intent detected:', intent);
-      
+
       console.log('🗣️ [ConversationService] Generating contextual response...');
       const response = await this.generateContextualResponse(
         message,
@@ -219,7 +230,10 @@ export class ConversationService {
         user,
         conversation.id,
       );
-      console.log('✅ [ConversationService] Contextual response generated:', response.substring(0, 100) + '...');
+      console.log(
+        '✅ [ConversationService] Contextual response generated:',
+        response.substring(0, 100) + '...',
+      );
 
       // Save assistant response
       console.log('💾 [ConversationService] Saving assistant response...');
@@ -234,28 +248,36 @@ export class ConversationService {
       console.log('- Phone:', phoneNumber);
 
       // Send response via WhatsApp
-      console.log('📤 [ConversationService] Sending final response via WhatsApp...');
+      console.log(
+        '📤 [ConversationService] Sending final response via WhatsApp...',
+      );
       await this.whatsapp.sendMessage(phoneNumber, response);
       console.log('✅ [ConversationService] Final response sent successfully');
 
       return;
     } catch (error) {
-      console.error('❌ [ConversationService] ERROR in message processing:', error);
+      console.error(
+        '❌ [ConversationService] ERROR in message processing:',
+        error,
+      );
       console.error('❌ [ConversationService] Error stack:', error.stack);
       console.error('❌ [ConversationService] Phone:', phoneNumber);
       console.error('❌ [ConversationService] Message:', message);
-      
+
       const errorResponse =
         "I'm sorry, I'm having some technical difficulties. Please try again in a moment. 🤖";
-      
+
       try {
         console.log('📤 [ConversationService] Sending error response...');
         await this.whatsapp.sendMessage(phoneNumber, errorResponse);
         console.log('✅ [ConversationService] Error response sent');
       } catch (sendError) {
-        console.error('❌ [ConversationService] Failed to send error response:', sendError);
+        console.error(
+          '❌ [ConversationService] Failed to send error response:',
+          sendError,
+        );
       }
-      
+
       return;
     }
   }
