@@ -43,23 +43,42 @@ export class ConversationService {
   async processIncomingMessage(messageData: IncomingMessage): Promise<void> {
     const { phoneNumber, message } = messageData;
 
+    console.log('🚀 [ConversationService] Starting message processing...');
+    console.log('📱 Phone:', phoneNumber);
+    console.log('💬 Message:', message);
+
     try {
       // Get or create user
+      console.log('👤 [ConversationService] Getting/creating user...');
       const user = await this.userService.findOrCreateUser(phoneNumber);
+      console.log('✅ [ConversationService] User found/created:', {
+        id: user.id,
+        city: user.city,
+        lat: user.locationLat,
+        lng: user.locationLng,
+      });
 
       // Generate conversation ID (using phone number as conversation identifier)
       const conversationId = `conv_${phoneNumber}`;
+      console.log('🔄 [ConversationService] Conversation ID:', conversationId);
 
       // Get or create conversation state
+      console.log('🎯 [ConversationService] Getting conversation state...');
       let conversationState =
         await this.conversationStateService.getConversationState(
           user.id,
           conversationId,
         );
+      console.log('✅ [ConversationService] Conversation state:', {
+        stage: conversationState.stage,
+        messageCount: conversationState.metadata.messageCount,
+      });
 
       // Enhanced location parsing - supports multiple formats
+      console.log('📍 [ConversationService] Parsing location from message...');
       const location = await this.locationService.parseLocationInput(message);
       if (location) {
+        console.log('✅ [ConversationService] Location parsed:', location);
         await this.userService.updateUserLocation(
           user.id,
           location.lat,
@@ -73,46 +92,84 @@ export class ConversationService {
 
         const locationDisplay = this.locationService.formatLocation(location);
         const response = `Thanks! I have saved your location as ${locationDisplay}. Now I can find clinics near you. 🏥`;
+        console.log(
+          '📤 [ConversationService] Sending location confirmation:',
+          response,
+        );
         await this.whatsapp.sendMessage(phoneNumber, response);
+        console.log(
+          '✅ [ConversationService] Location confirmation sent, ending process',
+        );
         return;
       }
+      console.log('ℹ️ [ConversationService] No location found in message');
 
       // Analyze message and update conversation state
+      console.log(
+        '🔍 [ConversationService] Analyzing message and updating state...',
+      );
       conversationState =
         await this.conversationStateService.analyzeMessageAndUpdateState(
           message,
           conversationState,
         );
+      console.log('✅ [ConversationService] State updated:', {
+        stage: conversationState.stage,
+        urgency: conversationState.context.urgency,
+        serviceType: conversationState.context.serviceType,
+      });
 
       // Generate conversational response
+      console.log(
+        '🗣️ [ConversationService] Generating conversational response...',
+      );
+      const userLocationData =
+        user.locationLat && user.locationLng
+          ? {
+              lat: user.locationLat,
+              lng: user.locationLng,
+              city: user.city,
+              state: user.city ? 'Lagos' : undefined,
+              country: 'Nigeria',
+            }
+          : conversationState.context.location || undefined;
+
+      console.log(
+        '📍 [ConversationService] User location data:',
+        userLocationData,
+      );
+
       const conversationalResponse =
         await this.conversationalResponseService.generateConversationalResponse(
           message,
           conversationState,
-          user.locationLat && user.locationLng
-            ? {
-                lat: user.locationLat,
-                lng: user.locationLng,
-                city: user.city,
-                state: user.city ? 'Lagos' : undefined,
-                country: 'Nigeria',
-              }
-            : conversationState.context.location || undefined,
+          userLocationData,
         );
+      console.log(
+        '✅ [ConversationService] Conversational response generated:',
+        {
+          hasResponse: !!conversationalResponse.response,
+          responseLength: conversationalResponse.response?.length,
+        },
+      );
 
       // Update conversation state
+      console.log('💾 [ConversationService] Updating conversation state...');
       await this.conversationStateService.updateConversationState(
         conversationState,
       );
 
       // Get or create conversation for message history
+      console.log('💬 [ConversationService] Getting/creating conversation for message history...');
       const conversation = await this.getOrCreateConversation(user.id);
 
       // Save user message
+      console.log('💾 [ConversationService] Saving user message...');
       await this.saveMessage(conversation.id, message, 'USER');
 
       // If conversational response is available, use it
       if (conversationalResponse.response) {
+        console.log('✅ [ConversationService] Using conversational response...');
         // Save assistant response
         await this.saveMessage(
           conversation.id,
@@ -121,55 +178,84 @@ export class ConversationService {
         );
 
         // Send conversational response
+        console.log('📤 [ConversationService] Sending conversational response:', conversationalResponse.response.substring(0, 100) + '...');
         await this.whatsapp.sendMessage(
           phoneNumber,
           conversationalResponse.response,
         );
+        console.log('✅ [ConversationService] Conversational response sent');
 
         // If this is a clinic search request, provide actual clinic results
         if (
           conversationState.stage === 'clinic_search' &&
           conversationState.context.serviceType
         ) {
+          console.log('🏥 [ConversationService] Handling clinic search...');
           const clinicResults = await this.handleClinicSearch(message, user);
           if (clinicResults) {
+            console.log('📤 [ConversationService] Sending clinic results...');
             await this.saveMessage(conversation.id, clinicResults, 'ASSISTANT');
             await this.whatsapp.sendMessage(phoneNumber, clinicResults);
+            console.log('✅ [ConversationService] Clinic results sent, ending process');
             return;
           }
         }
 
+        console.log('✅ [ConversationService] Conversational flow completed');
         return;
       }
+      
+      console.log('⚠️ [ConversationService] No conversational response, falling back to intent-based processing...');
 
       // Fallback to original intent-based processing
+      console.log('🎯 [ConversationService] Detecting intent...');
       const intent = await this.detectIntent(message, user);
+      console.log('✅ [ConversationService] Intent detected:', intent);
+      
+      console.log('🗣️ [ConversationService] Generating contextual response...');
       const response = await this.generateContextualResponse(
         message,
         intent,
         user,
         conversation.id,
       );
+      console.log('✅ [ConversationService] Contextual response generated:', response.substring(0, 100) + '...');
 
       // Save assistant response
+      console.log('💾 [ConversationService] Saving assistant response...');
       await this.saveMessage(conversation.id, response, 'ASSISTANT');
 
-      console.log('response', response);
-      console.log('intent', intent);
-      console.log('user', user);
-      console.log('conversation', conversation);
-      console.log('message', message);
-      console.log('phoneNumber', phoneNumber);
+      console.log('📊 [ConversationService] Debug info:');
+      console.log('- Response:', response.substring(0, 200) + '...');
+      console.log('- Intent:', intent);
+      console.log('- User ID:', user.id);
+      console.log('- Conversation ID:', conversation.id);
+      console.log('- Message:', message);
+      console.log('- Phone:', phoneNumber);
 
       // Send response via WhatsApp
+      console.log('📤 [ConversationService] Sending final response via WhatsApp...');
       await this.whatsapp.sendMessage(phoneNumber, response);
+      console.log('✅ [ConversationService] Final response sent successfully');
 
       return;
     } catch (error) {
-      console.error('Error processing message:', error);
+      console.error('❌ [ConversationService] ERROR in message processing:', error);
+      console.error('❌ [ConversationService] Error stack:', error.stack);
+      console.error('❌ [ConversationService] Phone:', phoneNumber);
+      console.error('❌ [ConversationService] Message:', message);
+      
       const errorResponse =
         "I'm sorry, I'm having some technical difficulties. Please try again in a moment. 🤖";
-      await this.whatsapp.sendMessage(phoneNumber, errorResponse);
+      
+      try {
+        console.log('📤 [ConversationService] Sending error response...');
+        await this.whatsapp.sendMessage(phoneNumber, errorResponse);
+        console.log('✅ [ConversationService] Error response sent');
+      } catch (sendError) {
+        console.error('❌ [ConversationService] Failed to send error response:', sendError);
+      }
+      
       return;
     }
   }
