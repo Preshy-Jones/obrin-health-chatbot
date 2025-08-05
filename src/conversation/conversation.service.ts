@@ -6,8 +6,14 @@ import { PrismaService } from 'prisma/prisma.service';
 import { OpenaiService } from 'src/openai/openai.service';
 import { WhatsappService } from 'src/whatsapp/whatsapp.service';
 import { ClinicService } from 'src/clinic/clinic.service';
+import { LocationService } from 'src/clinic/location.service';
 import { MenstrualTrackingService } from '../health/menstrual-tracking.service';
 import { SymptomCheckerService } from '../health/symptom-checker.service';
+import {
+  ConversationStateService,
+  ConversationState,
+} from './conversation-state.service';
+import { ConversationalResponseService } from './conversational-response.service';
 import { ChatCompletionMessageParam } from 'openai/resources';
 
 interface IncomingMessage {
@@ -27,8 +33,11 @@ export class ConversationService {
     private userService: UserService,
     private healthService: HealthService,
     private clinicService: ClinicService,
+    private locationService: LocationService,
     private menstrualTrackingService: MenstrualTrackingService,
     private symptomCheckerService: SymptomCheckerService,
+    private conversationStateService: ConversationStateService,
+    private conversationalResponseService: ConversationalResponseService,
   ) {}
 
   async processIncomingMessage(messageData: IncomingMessage): Promise<void> {
@@ -38,27 +47,102 @@ export class ConversationService {
       // Get or create user
       const user = await this.userService.findOrCreateUser(phoneNumber);
 
-      // If user sends location in message (e.g., 'My location is 6.5244, 3.3792' or 'lat:..., lng:...'), parse and store it
-      const locationMatch = message.match(
-        /([+-]?\d+\.\d+)[,\s]+([+-]?\d+\.\d+)/,
-      );
-      if (locationMatch) {
-        const lat = parseFloat(locationMatch[1]);
-        const lng = parseFloat(locationMatch[2]);
-        await this.userService.updateUserLocation(user.id, lat, lng);
-        await this.whatsapp.sendMessage(
-          phoneNumber,
-          'Thanks! I have saved your location. Now I can find clinics near you.',
+      // Generate conversation ID (using phone number as conversation identifier)
+      const conversationId = `conv_${phoneNumber}`;
+
+      // Get or create conversation state
+      let conversationState =
+        await this.conversationStateService.getConversationState(
+          user.id,
+          conversationId,
         );
+
+      // Enhanced location parsing - supports multiple formats
+      const location = await this.locationService.parseLocationInput(message);
+      if (location) {
+        await this.userService.updateUserLocation(
+          user.id,
+          location.lat,
+          location.lng,
+          location.city,
+        );
+        conversationState.context.location = location;
+        await this.conversationStateService.updateConversationState(
+          conversationState,
+        );
+
+        const locationDisplay = this.locationService.formatLocation(location);
+        const response = `Thanks! I have saved your location as ${locationDisplay}. Now I can find clinics near you. 🏥`;
+        await this.whatsapp.sendMessage(phoneNumber, response);
+        return;
       }
 
-      // Get or create conversation
+      // Analyze message and update conversation state
+      conversationState =
+        await this.conversationStateService.analyzeMessageAndUpdateState(
+          message,
+          conversationState,
+        );
+
+      // Generate conversational response
+      const conversationalResponse =
+        await this.conversationalResponseService.generateConversationalResponse(
+          message,
+          conversationState,
+          user.locationLat && user.locationLng
+            ? {
+                lat: user.locationLat,
+                lng: user.locationLng,
+                city: user.city,
+                state: user.city ? 'Lagos' : undefined,
+                country: 'Nigeria',
+              }
+            : conversationState.context.location || undefined,
+        );
+
+      // Update conversation state
+      await this.conversationStateService.updateConversationState(
+        conversationState,
+      );
+
+      // Get or create conversation for message history
       const conversation = await this.getOrCreateConversation(user.id);
 
       // Save user message
       await this.saveMessage(conversation.id, message, 'USER');
 
-      // Detect intent and generate response
+      // If conversational response is available, use it
+      if (conversationalResponse.response) {
+        // Save assistant response
+        await this.saveMessage(
+          conversation.id,
+          conversationalResponse.response,
+          'ASSISTANT',
+        );
+
+        // Send conversational response
+        await this.whatsapp.sendMessage(
+          phoneNumber,
+          conversationalResponse.response,
+        );
+
+        // If this is a clinic search request, provide actual clinic results
+        if (
+          conversationState.stage === 'clinic_search' &&
+          conversationState.context.serviceType
+        ) {
+          const clinicResults = await this.handleClinicSearch(message, user);
+          if (clinicResults) {
+            await this.saveMessage(conversation.id, clinicResults, 'ASSISTANT');
+            await this.whatsapp.sendMessage(phoneNumber, clinicResults);
+            return;
+          }
+        }
+
+        return;
+      }
+
+      // Fallback to original intent-based processing
       const intent = await this.detectIntent(message, user);
       const response = await this.generateContextualResponse(
         message,
@@ -79,12 +163,14 @@ export class ConversationService {
 
       // Send response via WhatsApp
       await this.whatsapp.sendMessage(phoneNumber, response);
+
+      return;
     } catch (error) {
       console.error('Error processing message:', error);
-      await this.whatsapp.sendMessage(
-        phoneNumber,
-        "I'm sorry, I'm having some technical difficulties. Please try again in a moment. 🤖",
-      );
+      const errorResponse =
+        "I'm sorry, I'm having some technical difficulties. Please try again in a moment. 🤖";
+      await this.whatsapp.sendMessage(phoneNumber, errorResponse);
+      return;
     }
   }
 
@@ -251,8 +337,8 @@ export class ConversationService {
         .join('\n\n');
       return `Here are some nearby healthcare facilities:\n\n${clinicList}\n\nWould you like more information about any of these clinics? 🏥`;
     } else {
-      // Ask user for location
-      return `To find clinics near you, please share your location (e.g., send your city or type 'My location is 6.5244, 3.3792').`;
+      // Ask user for location with enhanced instructions
+      return this.locationService.getLocationInstructions();
     }
   }
 

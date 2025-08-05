@@ -31,6 +31,7 @@ model User {
   conversations Conversation[]
   healthProfiles HealthProfile[]
   clinicSearches ClinicSearch[]
+  conversationStates ConversationState[]
 
   @@map("users")
 }
@@ -90,6 +91,22 @@ model ClinicSearch {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("clinic_searches")
+}
+
+model ConversationState {
+  id             String   @id @default(uuid())
+  userId         String
+  conversationId String
+  stage          String   @default("greeting")
+  context        Json     @default("{}")
+  messageCount   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationId])
+  @@map("conversation_states")
 }
 
 model KnowledgeBase {

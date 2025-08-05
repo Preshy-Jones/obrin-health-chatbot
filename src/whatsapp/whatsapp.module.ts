@@ -8,6 +8,9 @@ import { UserService } from 'src/user/user.service';
 import { HealthService } from 'src/health/health.service';
 import { ClinicService } from 'src/clinic/clinic.service';
 import { HealthModule } from 'src/health/health.module';
+import { LocationService } from 'src/clinic/location.service';
+import { ConversationStateService } from 'src/conversation/conversation-state.service';
+import { ConversationalResponseService } from 'src/conversation/conversational-response.service';
 
 @Module({
   imports: [forwardRef(() => HealthModule)],
@@ -20,6 +23,9 @@ import { HealthModule } from 'src/health/health.module';
     UserService,
     HealthService,
     ClinicService,
+    LocationService,
+    ConversationStateService,
+    ConversationalResponseService,
   ],
   exports: [WhatsappService],
 })
