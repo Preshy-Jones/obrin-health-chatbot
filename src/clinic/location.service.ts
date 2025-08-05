@@ -20,6 +20,11 @@ export class LocationService {
   async parseLocationInput(input: string): Promise<LocationResult | null> {
     const lowerInput = input.toLowerCase().trim();
 
+    // Skip location parsing for common non-location phrases
+    if (this.isNonLocationPhrase(lowerInput)) {
+      return null;
+    }
+
     // Method 1: Check for coordinates (existing functionality)
     const coordinates = this.extractCoordinates(input);
     if (coordinates) {
@@ -32,13 +37,142 @@ export class LocationService {
       return nigerianLocation;
     }
 
-    // Method 3: Use Google Geocoding API for any location
-    try {
-      return await this.geocodeLocation(input);
-    } catch (error) {
-      console.error('Geocoding failed:', error);
-      return null;
+    // Method 3: Use Google Geocoding API for specific location patterns only
+    if (this.looksLikeLocation(lowerInput)) {
+      try {
+        return await this.geocodeLocation(input);
+      } catch (error) {
+        console.error('Geocoding failed:', error);
+        return null;
+      }
     }
+
+    return null;
+  }
+
+  /**
+   * Check if input is a common non-location phrase
+   */
+  private isNonLocationPhrase(input: string): boolean {
+    const nonLocationPhrases = [
+      // Greetings
+      'hello',
+      'hi',
+      'hey',
+      'good morning',
+      'good afternoon',
+      'good evening',
+      // Health-related but not location
+      'i need help',
+      'i have symptoms',
+      'i feel',
+      'pain',
+      'discharge',
+      'bleeding',
+      'clinic',
+      'hospital',
+      'doctor',
+      'help me',
+      'i need',
+      'thank you',
+      'thanks',
+      // Questions
+      'how',
+      'what',
+      'when',
+      'where',
+      'why',
+      'can you',
+      'do you',
+      // General responses
+      'yes',
+      'no',
+      'okay',
+      'ok',
+      'sure',
+      'maybe',
+      'probably',
+      // Service types
+      'gynecology',
+      'sti testing',
+      'family planning',
+      'emergency contraception',
+    ];
+
+    return nonLocationPhrases.some((phrase) => input.includes(phrase));
+  }
+
+  /**
+   * Check if input looks like a location
+   */
+  private looksLikeLocation(input: string): boolean {
+    const locationIndicators = [
+      "i'm in",
+      'i am in',
+      'located in',
+      'live in',
+      'stay in',
+      'near',
+      'close to',
+      'around',
+      'area',
+      'street',
+      'road',
+      'my location is',
+      "i'm at",
+      'i am at',
+    ];
+
+    // Check if it contains location indicators
+    if (locationIndicators.some((indicator) => input.includes(indicator))) {
+      return true;
+    }
+
+    // Check if it's a single word that could be a place name (but not common words)
+    const words = input.split(' ');
+    if (
+      words.length === 1 &&
+      words[0].length > 3 &&
+      !this.isCommonWord(words[0])
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a word is a common English word (not a place name)
+   */
+  private isCommonWord(word: string): boolean {
+    const commonWords = [
+      'hello',
+      'help',
+      'need',
+      'want',
+      'have',
+      'feel',
+      'pain',
+      'sick',
+      'good',
+      'bad',
+      'yes',
+      'no',
+      'okay',
+      'sure',
+      'maybe',
+      'very',
+      'much',
+      'some',
+      'any',
+      'all',
+      'none',
+      'more',
+      'less',
+      'most',
+    ];
+
+    return commonWords.includes(word);
   }
 
   /**
