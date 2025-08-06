@@ -64,9 +64,9 @@ export class ConversationalResponseService {
     state: ConversationState,
   ): Promise<{ response: string; followUp?: string[] }> {
     const greetings = [
-      "Hello! 👋 I'm your Obrin Health assistant. How can I help you today?",
-      "Hi there! 🌸 I'm here to support your health journey. What brings you here?",
-      "Welcome back! 💙 I'm ready to help with any health questions you have.",
+      "Hello! 👋 I'm your Obrin Health assistant, here to support your sexual and reproductive health. What's on your mind today?",
+      "Hi there! 🌸 I'm here to help with any questions about your reproductive health journey. How can I assist you?",
+      "Welcome! 💙 I'm your confidential SRH support. Feel free to ask anything about your health - I'm here to help without judgment.",
     ];
 
     // Check if returning user with location
@@ -75,11 +75,11 @@ export class ConversationalResponseService {
         state.context.location,
       );
       return {
-        response: `Welcome back! I remember you're in ${locationDisplay}. How can I help you today? 💙`,
+        response: `Welcome back! I remember you're in ${locationDisplay}. How can I help with your health today? 💙`,
         followUp: [
-          'What type of health services are you looking for?',
-          'Do you need help finding a clinic?',
-          'Are you experiencing any symptoms?',
+          'Tell me about any symptoms or concerns you have',
+          'Ask about menstrual health, contraception, or STIs',
+          "Share what's on your mind - I'm here to listen",
         ],
       };
     }
@@ -87,9 +87,9 @@ export class ConversationalResponseService {
     return {
       response: greetings[Math.floor(Math.random() * greetings.length)],
       followUp: [
-        'What type of health services are you looking for?',
-        'Do you need help finding a clinic?',
-        'Are you experiencing any symptoms?',
+        'Tell me about any symptoms or concerns you have',
+        'Ask about menstrual health, contraception, or STIs',
+        "Share what's on your mind - I'm here to listen",
       ],
     };
   }
@@ -140,6 +140,63 @@ What type of health services are you looking for today?
     message: string,
     state: ConversationState,
   ): Promise<{ response: string; followUp?: string[] }> {
+    // Check for specific pregnancy information requests
+    if (
+      message.toLowerCase().includes('early pregnancy symptoms') ||
+      (message.toLowerCase().includes('symptoms') &&
+        state.context.serviceType === 'pregnancy_care')
+    ) {
+      return {
+        response: `Here are the common early pregnancy symptoms to look out for: 🤰
+
+**Most Common Early Signs:**
+• **Missed period** - Usually the first sign
+• **Nausea/morning sickness** - Often starts around 6 weeks
+• **Breast tenderness** - Feeling sore or swollen
+• **Fatigue** - Feeling unusually tired
+• **Frequent urination** - Need to pee more often
+• **Food aversions** - Suddenly disliking certain foods
+• **Mood changes** - Feeling more emotional
+
+**When to Take a Test:**
+• Wait at least 1 week after missed period for most accurate results
+• Home pregnancy tests are about 99% accurate when used correctly
+
+**Remember:** Every person is different - you might have all, some, or none of these symptoms.
+
+Would you like me to help you understand what to do next? 💙`,
+        followUp: [
+          'Do you think you might be pregnant?',
+          'Would you like to know about pregnancy tests?',
+          'Do you need help finding prenatal care?',
+        ],
+      };
+    }
+
+    // Check for initial pregnancy-related queries (first time asking)
+    if (
+      (message.toLowerCase().includes('pregnancy') ||
+        message.toLowerCase().includes('pregnant')) &&
+      state.metadata.messageCount <= 1
+    ) {
+      return {
+        response: `I'm here to help with pregnancy-related questions. 🤰
+
+Could you tell me more about what you'd like to know? For example:
+• Early pregnancy symptoms
+• What to expect during pregnancy
+• Prenatal care information
+• Concerns about possible pregnancy
+
+Feel free to share - this is a safe, judgment-free space.`,
+        followUp: [
+          'Tell me more about your specific concerns',
+          'What symptoms are you experiencing?',
+          'How can I best support you right now?',
+        ],
+      };
+    }
+
     if (state.context.symptoms && state.context.symptoms.length > 0) {
       return {
         response: `I understand you're experiencing ${state.context.symptoms.join(', ')}. 
@@ -149,29 +206,30 @@ To help you better, could you tell me:
 • Are they mild, moderate, or severe?
 • Have you experienced anything like this before?
 
-This will help me provide more accurate guidance. 🤔`,
+Based on your answers, I can provide guidance and let you know if you should consider seeing a healthcare provider. 🤔`,
         followUp: [
           'How long have you had these symptoms?',
           'Are the symptoms mild, moderate, or severe?',
-          'Would you like me to help you find a clinic?',
+          "Tell me more about what you're experiencing",
         ],
       };
     }
 
     return {
-      response: `I'm here to help assess your health concerns. 
+      response: `I'm here to help with your sexual and reproductive health concerns. 
 
 Could you describe what you're experiencing? For example:
-• "I have pain during urination"
+• "I have pregnancy symptoms"
 • "Unusual discharge"
 • "Missed my period"
-• "Need emergency contraception"
+• "Questions about contraception"
+• "Concerns about STIs"
 
-Don't worry - I'm here to help, not judge. 💙`,
+Take your time - I'm here to listen and help. 💙`,
       followUp: [
-        'What symptoms are you experiencing?',
-        'How long have you had these symptoms?',
-        'Would you like me to help you find a clinic?',
+        'What symptoms or concerns do you have?',
+        'Tell me more about what brought you here today',
+        'How can I best support your health needs?',
       ],
     };
   }

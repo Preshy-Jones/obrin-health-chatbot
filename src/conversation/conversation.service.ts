@@ -90,19 +90,33 @@ export class ConversationService {
           conversationState,
         );
 
-        const locationDisplay = this.locationService.formatLocation(location);
-        const response = `Thanks! I have saved your location as ${locationDisplay}. Now I can find clinics near you. 🏥`;
-        console.log(
-          '📤 [ConversationService] Sending location confirmation:',
-          response,
+        // Check if this is a clinic search request
+        const isClinicSearch = this.isClinicSearchRequest(
+          message,
+          conversationState,
         );
-        await this.whatsapp.sendMessage(phoneNumber, response);
+
+        if (isClinicSearch) {
+          console.log(
+            '🏥 [ConversationService] Clinic search detected, searching Google Maps...',
+          );
+          const clinicResults = await this.searchNearbyClinics(location);
+
+          if (clinicResults) {
+            console.log('📤 [ConversationService] Sending clinic results...');
+            await this.whatsapp.sendMessage(phoneNumber, clinicResults);
+            console.log('✅ [ConversationService] Clinic results sent');
+            return;
+          }
+        }
+
+        // If not clinic search, continue with normal AI response
         console.log(
-          '✅ [ConversationService] Location confirmation sent, ending process',
+          'ℹ️ [ConversationService] Location saved, continuing with AI response...',
         );
-        return;
+      } else {
+        console.log('ℹ️ [ConversationService] No location found in message');
       }
-      console.log('ℹ️ [ConversationService] No location found in message');
 
       // Analyze message and update conversation state
       console.log(
@@ -119,10 +133,17 @@ export class ConversationService {
         serviceType: conversationState.context.serviceType,
       });
 
-      // Generate conversational response
+      // Generate AI response using OpenAI
+      console.log('🗣️ [ConversationService] Generating AI response...');
+
+      // Get conversation history for context
       console.log(
-        '🗣️ [ConversationService] Generating conversational response...',
+        '💬 [ConversationService] Getting/creating conversation for message history...',
       );
+      const conversation = await this.getOrCreateConversation(user.id);
+      const recentMessages = await this.getRecentMessages(conversation.id, 10);
+
+      // Prepare context for OpenAI
       const userLocationData =
         user.locationLat && user.locationLng
           ? {
@@ -139,19 +160,43 @@ export class ConversationService {
         userLocationData,
       );
 
-      const conversationalResponse =
-        await this.conversationalResponseService.generateConversationalResponse(
-          message,
-          conversationState,
-          userLocationData,
-        );
-      console.log(
-        '✅ [ConversationService] Conversational response generated:',
-        {
-          hasResponse: !!conversationalResponse.response,
-          responseLength: conversationalResponse.response?.length,
-        },
+      const context = {
+        userId: user.id,
+        stage: conversationState.stage,
+        serviceType: conversationState.context.serviceType,
+        urgency: conversationState.context.urgency,
+        userLocation: userLocationData,
+        conversationHistory: recentMessages,
+        topic: this.inferTopic(message, conversationState.context.serviceType),
+        isNewUser: recentMessages.length === 0, // Flag for new users
+      };
+
+      // Prepare conversation history for OpenAI
+      const messageHistory: ChatCompletionMessageParam[] = [];
+
+      // Add recent messages in chronological order
+      if (recentMessages.length > 0) {
+        recentMessages.reverse().forEach((msg) => {
+          messageHistory.push({
+            role: msg.role === 'USER' ? 'user' : 'assistant',
+            content: msg.content,
+          });
+        });
+      }
+
+      // Add current message
+      messageHistory.push({ role: 'user', content: message });
+
+      // Use OpenAI to generate response
+      const aiResponse = await this.openAi.generateResponse(
+        messageHistory,
+        context,
       );
+
+      console.log('✅ [ConversationService] AI response generated:', {
+        hasResponse: !!aiResponse,
+        responseLength: aiResponse?.length,
+      });
 
       // Update conversation state
       console.log('💾 [ConversationService] Updating conversation state...');
@@ -159,38 +204,24 @@ export class ConversationService {
         conversationState,
       );
 
-      // Get or create conversation for message history
-      console.log(
-        '💬 [ConversationService] Getting/creating conversation for message history...',
-      );
-      const conversation = await this.getOrCreateConversation(user.id);
-
       // Save user message
       console.log('💾 [ConversationService] Saving user message...');
       await this.saveMessage(conversation.id, message, 'USER');
 
-      // If conversational response is available, use it
-      if (conversationalResponse.response) {
-        console.log(
-          '✅ [ConversationService] Using conversational response...',
-        );
-        // Save assistant response
-        await this.saveMessage(
-          conversation.id,
-          conversationalResponse.response,
-          'ASSISTANT',
-        );
+      // If AI response is available, use it
+      if (aiResponse) {
+        console.log('✅ [ConversationService] Using AI response...');
 
-        // Send conversational response
+        // Save assistant response
+        await this.saveMessage(conversation.id, aiResponse, 'ASSISTANT');
+
+        // Send AI response
         console.log(
-          '📤 [ConversationService] Sending conversational response:',
-          conversationalResponse.response.substring(0, 100) + '...',
+          '📤 [ConversationService] Sending AI response:',
+          aiResponse.substring(0, 100) + '...',
         );
-        await this.whatsapp.sendMessage(
-          phoneNumber,
-          conversationalResponse.response,
-        );
-        console.log('✅ [ConversationService] Conversational response sent');
+        await this.whatsapp.sendMessage(phoneNumber, aiResponse);
+        console.log('✅ [ConversationService] AI response sent');
 
         // If this is a clinic search request, provide actual clinic results
         if (
@@ -210,50 +241,21 @@ export class ConversationService {
           }
         }
 
-        console.log('✅ [ConversationService] Conversational flow completed');
+        console.log('✅ [ConversationService] AI conversation flow completed');
         return;
       }
 
+      // Fallback: if no AI response, use basic error message
       console.log(
-        '⚠️ [ConversationService] No conversational response, falling back to intent-based processing...',
+        '⚠️ [ConversationService] No AI response, sending fallback...',
       );
+      const fallbackResponse =
+        "I'm sorry, I'm having some technical difficulties. Please try again in a moment. 🤖";
 
-      // Fallback to original intent-based processing
-      console.log('🎯 [ConversationService] Detecting intent...');
-      const intent = await this.detectIntent(message, user);
-      console.log('✅ [ConversationService] Intent detected:', intent);
-
-      console.log('🗣️ [ConversationService] Generating contextual response...');
-      const response = await this.generateContextualResponse(
-        message,
-        intent,
-        user,
-        conversation.id,
-      );
-      console.log(
-        '✅ [ConversationService] Contextual response generated:',
-        response.substring(0, 100) + '...',
-      );
-
-      // Save assistant response
-      console.log('💾 [ConversationService] Saving assistant response...');
-      await this.saveMessage(conversation.id, response, 'ASSISTANT');
-
-      console.log('📊 [ConversationService] Debug info:');
-      console.log('- Response:', response.substring(0, 200) + '...');
-      console.log('- Intent:', intent);
-      console.log('- User ID:', user.id);
-      console.log('- Conversation ID:', conversation.id);
-      console.log('- Message:', message);
-      console.log('- Phone:', phoneNumber);
-
-      // Send response via WhatsApp
-      console.log(
-        '📤 [ConversationService] Sending final response via WhatsApp...',
-      );
-      await this.whatsapp.sendMessage(phoneNumber, response);
-      console.log('✅ [ConversationService] Final response sent successfully');
-
+      await this.saveMessage(conversation.id, fallbackResponse, 'ASSISTANT');
+      console.log('📤 [ConversationService] Sending fallback response...');
+      await this.whatsapp.sendMessage(phoneNumber, fallbackResponse);
+      console.log('✅ [ConversationService] Fallback response sent');
       return;
     } catch (error) {
       console.error(
@@ -689,12 +691,10 @@ export class ConversationService {
     });
   }
 
-  private async getRecentMessages(userId: string, limit: number = 10) {
+  private async getRecentMessages(conversationId: string, limit: number = 10) {
     return await this.prisma.message.findMany({
       where: {
-        conversation: {
-          userId,
-        },
+        conversationId,
       },
       orderBy: {
         timestamp: 'desc',
@@ -706,5 +706,143 @@ export class ConversationService {
         timestamp: true,
       },
     });
+  }
+
+  private inferTopic(message: string, serviceType?: string): string {
+    const lowerMessage = message.toLowerCase();
+
+    // Use serviceType if available
+    if (serviceType) {
+      return serviceType.replace('_care', '').replace('_', '_');
+    }
+
+    // Infer from message content
+    if (
+      lowerMessage.includes('emergency') ||
+      lowerMessage.includes('plan b') ||
+      lowerMessage.includes('morning after')
+    ) {
+      return 'emergency_contraception';
+    }
+
+    if (
+      lowerMessage.includes('pregnant') ||
+      lowerMessage.includes('pregnancy')
+    ) {
+      return 'pregnancy_concern';
+    }
+
+    if (
+      lowerMessage.includes('sti') ||
+      lowerMessage.includes('discharge') ||
+      lowerMessage.includes('burning') ||
+      lowerMessage.includes('itching')
+    ) {
+      return 'sti_symptoms_and_testing';
+    }
+
+    if (
+      lowerMessage.includes('period') ||
+      lowerMessage.includes('menstrual') ||
+      lowerMessage.includes('cycle')
+    ) {
+      return 'menstrual_tracking';
+    }
+
+    if (
+      lowerMessage.includes('contraception') ||
+      lowerMessage.includes('birth control') ||
+      lowerMessage.includes('pill')
+    ) {
+      return 'contraception';
+    }
+
+    if (
+      lowerMessage.includes('menopause') ||
+      lowerMessage.includes('hot flash') ||
+      lowerMessage.includes('hormone')
+    ) {
+      return 'menopause_support';
+    }
+
+    return 'general';
+  }
+
+  private isClinicSearchRequest(
+    message: string,
+    conversationState: ConversationState,
+  ): boolean {
+    const lowerMessage = message.toLowerCase();
+
+    // Direct clinic search requests
+    if (
+      lowerMessage.includes('find clinic') ||
+      lowerMessage.includes('find hospital') ||
+      lowerMessage.includes('where can i test') ||
+      lowerMessage.includes('where to test') ||
+      lowerMessage.includes('clinic near') ||
+      lowerMessage.includes('hospital near') ||
+      lowerMessage.includes('hospitals in') ||
+      lowerMessage.includes('clinics in') ||
+      lowerMessage.includes('find me hospital') ||
+      lowerMessage.includes('find me clinic')
+    ) {
+      return true;
+    }
+
+    // Context-based: if user just provided location and previous context suggests clinic search
+    if (
+      conversationState.context.serviceType &&
+      (conversationState.context.serviceType.includes('sti') ||
+        conversationState.context.serviceType.includes('testing'))
+    ) {
+      return true;
+    }
+
+    // Check conversation history for testing/STI context
+    if (conversationState.metadata.messageCount > 0) {
+      // If user was discussing testing/STIs and now provides location, likely wants clinics
+      return true;
+    }
+
+    return false;
+  }
+
+  private async searchNearbyClinics(location: any): Promise<string> {
+    try {
+      console.log(
+        '🔍 [ConversationService] Searching Google Maps for nearby clinics...',
+      );
+
+      // Search for clinics using Google Maps Places API
+      const clinics = await this.clinicService.searchNearbyClinicsGoogleMaps(
+        location.lat,
+        location.lng,
+        5000, // 5km radius
+        'clinic,hospital,medical center',
+      );
+
+      if (!clinics || clinics.length === 0) {
+        return `I couldn't find any clinics near ${this.locationService.formatLocation(location)}. You might want to try searching for a broader area or check with local health authorities. 🏥`;
+      }
+
+      // Format clinic results
+      let response = `Here are clinics near ${this.locationService.formatLocation(location)}:\n\n`;
+
+      clinics.slice(0, 5).forEach((clinic, index) => {
+        response += `${index + 1}. **${clinic.name}**\n`;
+        if (clinic.address) response += `📍 ${clinic.address}\n`;
+        if (clinic.rating) response += `⭐ ${clinic.rating}/5\n`;
+        if (clinic.phone) response += `📞 ${clinic.phone}\n`;
+        response += '\n';
+      });
+
+      response += `These results are from Google Maps. For the most accurate information, please call the clinic directly. 📞`;
+
+      return response;
+    } catch (error) {
+      console.error('❌ [ConversationService] Error searching clinics:', error);
+      return `I'm having trouble searching for clinics right now. You can try searching "clinics near ${this.locationService.formatLocation(location)}" on Google Maps. 🏥`;
+    }
   }
 }

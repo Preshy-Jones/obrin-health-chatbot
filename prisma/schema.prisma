@@ -68,10 +68,15 @@ model HealthProfile {
   userId         String
   lastPeriod     DateTime?
   cycleLength    Int?
+  periodLength   Int?     // Average period length in days
+  flowIntensity  String?  // Light, Medium, Heavy
   symptoms       String[]
   medications    String[]
   allergies      String[]
   medicalHistory Json?
+  periodHistory  Json?    // Array of past periods for pattern analysis
+  reminderEnabled Boolean @default(true)
+  reminderDays   Int      @default(3)  // Days before period to send reminder
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
